@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Autodesk Platform Hub — a unified platform portal for customer environments.">
+  <title>Autodesk Platform Hub</title>
+
+  <!-- Lucide icons (open-source SVG icon library) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Main app mount point -->
+  <div id="app" role="main" aria-label="Autodesk Platform Hub"></div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Modal dialogs -->
+  <div id="dialog-container"></div>
+
+  <!-- Module entry point — all JS loaded as ES modules; no build step required -->
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>

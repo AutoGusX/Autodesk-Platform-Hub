@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 36" fill="none">
+  <!-- Autodesk "A" mark placeholder -->
+  <rect x="0" y="4" width="28" height="28" rx="4" fill="#0696d7"/>
+  <path d="M14 8L22 28H17.5L16 24H12L10.5 28H6L14 8Z" fill="white"/>
+  <rect x="11.5" y="19" width="5" height="2" rx="1" fill="#0696d7"/>
+  <!-- Wordmark -->
+  <text
+    x="36"
+    y="26"
+    font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif"
+    font-weight="700"
+    font-size="15"
+    letter-spacing="0.5"
+    fill="currentColor"
+  >AUTODESK</text>
+</svg>
