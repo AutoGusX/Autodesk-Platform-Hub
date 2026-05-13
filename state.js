@@ -14,6 +14,8 @@ function getSystemTheme() {
 export const state = {
   config: emptyConfig(),
   dirty: false,          // true when config has unsaved (un-exported) changes
+  isFirstRun: false,     // true when localStorage was empty at startup
+  _defaultConfig: null,  // valid config.json fetched from repo root, if found
   _subscribers: [],
 };
 
@@ -38,8 +40,9 @@ export function loadState() {
     }
   }
 
-  state.config = emptyConfig();
+  state.config       = emptyConfig();
   state.config.theme = theme;
+  state.isFirstRun   = true;   // no valid localStorage config found
 }
 
 export function saveState() {
@@ -61,6 +64,11 @@ export function updateConfig(newConfig) {
 
 export function markExported() {
   state.dirty = false;
+}
+
+export function clearFirstRun() {
+  state.isFirstRun   = false;
+  state._defaultConfig = null;
 }
 
 export function setTheme(theme) {

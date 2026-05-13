@@ -1,6 +1,7 @@
 // app.js — router, consumer views, Toast, Dialog, app bootstrap
 
-import { state, loadState, setTheme } from './state.js';
+import { state, loadState, setTheme, updateConfig, clearFirstRun } from './state.js';
+import { validate } from './schema.js';
 import { resolveUrl, getMissingTokens, escapeHtml } from './url.js';
 import { refreshIcons } from './icons.js';
 import { renderAdmin } from './admin.js';
@@ -284,6 +285,117 @@ function renderHomeView() {
   return main;
 }
 
+// ─── Welcome / first-run view ──────────────────────────────────────────────
+
+function renderWelcomeView() {
+  const main = document.createElement('main');
+  main.className = 'view-welcome';
+  main.setAttribute('id', 'main-content');
+
+  const hasDefault = !!state._defaultConfig;
+
+  main.innerHTML = `
+    <div class="welcome-card">
+      <div class="welcome-logos">
+        <img src="assets/autodesk-logo-light.png" class="welcome-logo logo-light" alt="Autodesk">
+        <img src="assets/autodesk-logo-dark.png"  class="welcome-logo logo-dark"  alt="Autodesk">
+      </div>
+      <h1 class="welcome-title">${escapeHtml(state.config.brand?.title || 'Autodesk Platform Hub')}</h1>
+      <p class="welcome-subtitle">How would you like to get started?</p>
+
+      <div class="welcome-options">
+        ${hasDefault ? `
+          <button class="welcome-opt welcome-opt-featured" id="w-load-default">
+            <span class="welcome-opt-icon">
+              <i data-lucide="download-cloud" class="icon" aria-hidden="true"></i>
+            </span>
+            <span class="welcome-opt-text">
+              <strong>Load saved configuration</strong>
+              <span class="welcome-opt-desc">A config.json was found at this site — load it now</span>
+            </span>
+          </button>
+        ` : ''}
+
+        <label class="welcome-opt" for="w-import-file">
+          <span class="welcome-opt-icon">
+            <i data-lucide="folder-open" class="icon" aria-hidden="true"></i>
+          </span>
+          <span class="welcome-opt-text">
+            <strong>Import from file</strong>
+            <span class="welcome-opt-desc">Browse for a config.json exported from this app</span>
+          </span>
+          <input type="file" id="w-import-file" accept=".json,application/json" class="file-input-hidden">
+        </label>
+
+        <button class="welcome-opt" id="w-scratch">
+          <span class="welcome-opt-icon">
+            <i data-lucide="plus-square" class="icon" aria-hidden="true"></i>
+          </span>
+          <span class="welcome-opt-text">
+            <strong>Start from scratch</strong>
+            <span class="welcome-opt-desc">Create a brand-new empty configuration</span>
+          </span>
+        </button>
+      </div>
+
+      <div id="w-error" class="welcome-error" hidden></div>
+    </div>
+  `;
+
+  // Load default config.json
+  if (hasDefault) {
+    main.querySelector('#w-load-default').addEventListener('click', () => {
+      const result = updateConfig(state._defaultConfig);
+      if (result.valid) {
+        clearFirstRun();
+        showToast('Configuration loaded from config.json', 'success');
+        render();
+      } else {
+        const errDiv = main.querySelector('#w-error');
+        errDiv.hidden = false;
+        errDiv.textContent = 'config.json failed validation: ' + (result.errors[0]?.message || 'unknown error');
+      }
+    });
+  }
+
+  // Import from file picker
+  main.querySelector('#w-import-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const errDiv = main.querySelector('#w-error');
+      try {
+        const parsed = JSON.parse(reader.result);
+        const result = validate(parsed);
+        if (result.valid) {
+          updateConfig(parsed);
+          clearFirstRun();
+          showToast(`"${file.name}" imported`, 'success');
+          render();
+        } else {
+          errDiv.hidden = false;
+          errDiv.innerHTML =
+            `<strong>Validation errors:</strong><br>` +
+            result.errors.slice(0, 3).map(er => escapeHtml(er.message)).join('<br>');
+        }
+      } catch {
+        errDiv.hidden = false;
+        errDiv.textContent = 'File is not valid JSON.';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Start from scratch
+  main.querySelector('#w-scratch').addEventListener('click', () => {
+    clearFirstRun();
+    render();
+  });
+
+  return main;
+}
+
 // ─── Customer detail view ──────────────────────────────────────────────────
 
 function renderSubmoduleCard(submodule, customer) {
@@ -443,7 +555,7 @@ function render() {
 
   let mainContent;
   if (route.view === 'home') {
-    mainContent = renderHomeView();
+    mainContent = state.isFirstRun ? renderWelcomeView() : renderHomeView();
   } else if (route.view === 'customer') {
     mainContent = renderCustomerView(route.customerId, route.moduleId);
   } else if (route.view === 'admin') {
@@ -459,7 +571,32 @@ function render() {
 
 // ─── Bootstrap ─────────────────────────────────────────────────────────────
 
-loadState();
-document.documentElement.setAttribute('data-theme', state.config.theme);
-window.addEventListener('hashchange', render);
-render();
+async function init() {
+  loadState();
+  document.documentElement.setAttribute('data-theme', state.config.theme);
+
+  // On first run, eagerly try to fetch config.json from the repo root so the
+  // result is ready before the welcome screen is painted.  A 4-second timeout
+  // prevents this from blocking the page on a slow or missing file.
+  if (state.isFirstRun) {
+    const controller = new AbortController();
+    const timeout    = setTimeout(() => controller.abort(), 4000);
+    try {
+      const resp = await fetch('./config.json', { signal: controller.signal });
+      clearTimeout(timeout);
+      if (resp.ok) {
+        const json   = await resp.json();
+        const result = validate(json);
+        if (result.valid) state._defaultConfig = json;
+      }
+    } catch {
+      clearTimeout(timeout);
+      // config.json not found or fetch timed out — no default available
+    }
+  }
+
+  window.addEventListener('hashchange', render);
+  render();
+}
+
+init();
