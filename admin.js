@@ -95,12 +95,19 @@ function buildRailItem(customer) {
       }
       <span class="rail-item-name">${escapeHtml(customer.name)}</span>
     </button>
+    <button class="btn-ghost btn-icon rail-clone" data-id="${escapeHtml(customer.id)}" aria-label="Clone ${escapeHtml(customer.name)}">
+      <i data-lucide="copy" class="icon icon-sm" aria-hidden="true"></i>
+    </button>
     <button class="btn-ghost btn-icon rail-delete" data-id="${escapeHtml(customer.id)}" aria-label="Delete ${escapeHtml(customer.name)}">
       <i data-lucide="trash-2" class="icon icon-sm" aria-hidden="true"></i>
     </button>
   `;
 
   item.querySelector('.rail-item-btn').addEventListener('click', () => selectCustomer(customer.id));
+  item.querySelector('.rail-clone').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openCloneCustomerDialog(customer);
+  });
   item.querySelector('.rail-delete').addEventListener('click', (e) => {
     e.stopPropagation();
     confirmDeleteCustomer(customer.id, customer.name);
@@ -699,6 +706,190 @@ async function openCreateCustomerDialog() {
     rerenderAdmin();
   } else {
     _showToast('Error: ' + result.errors[0]?.message, 'error');
+  }
+}
+
+async function openCloneCustomerDialog(customer) {
+  // ── Selection state (initialised: everything checked) ──────────────────
+  const varCount = Object.keys(customer.variables || {}).length;
+  const sel = {
+    variables: varCount > 0,
+    modules: {},
+  };
+  (customer.modules || []).forEach(mod => {
+    sel.modules[mod.id] = {
+      checked: true,
+      subs: Object.fromEntries((mod.submodules || []).map(s => [s.id, true])),
+    };
+  });
+
+  const ok = await _showDialog({
+    title: `Clone "${escapeHtml(customer.name)}"`,
+    body: `
+      <div class="form-group">
+        <label for="dlg-clone-name" class="form-label">
+          New customer name <span class="req" aria-hidden="true">*</span>
+        </label>
+        <input id="dlg-clone-name" type="text" class="form-input"
+          value="${escapeHtml('Copy of ' + customer.name)}" maxlength="80" autocomplete="off">
+      </div>
+      <div class="clone-select-btns">
+        <span class="clone-select-label">Items to copy:</span>
+        <button type="button" class="btn btn-ghost btn-xs" id="clone-sel-all">Select all</button>
+        <button type="button" class="btn btn-ghost btn-xs" id="clone-desel-all">Deselect all</button>
+      </div>
+      <div class="clone-tree" id="clone-tree"></div>
+    `,
+    confirmText: 'Clone',
+    onReady: (overlay) => {
+      const tree = overlay.querySelector('#clone-tree');
+
+      function buildTree() {
+        tree.innerHTML = '';
+
+        // ── Variables row ───────────────────────────────────────────────
+        if (varCount > 0) {
+          const vRow = document.createElement('label');
+          vRow.className = 'clone-row clone-var-row';
+          vRow.innerHTML = `
+            <input type="checkbox" class="clone-cb" ${sel.variables ? 'checked' : ''}>
+            <i data-lucide="hash" class="icon icon-sm" aria-hidden="true"></i>
+            <span class="clone-item-name">Customer variables</span>
+            <span class="clone-count">${varCount} key${varCount !== 1 ? 's' : ''}</span>
+          `;
+          vRow.querySelector('input').addEventListener('change', (e) => {
+            sel.variables = e.target.checked;
+          });
+          tree.appendChild(vRow);
+        }
+
+        // ── Modules + submodules ────────────────────────────────────────
+        (customer.modules || []).forEach(mod => {
+          const modSel    = sel.modules[mod.id];
+          const subs      = mod.submodules || [];
+          const selSubCnt = subs.filter(s => modSel.subs[s.id]).length;
+
+          const modWrap = document.createElement('div');
+          modWrap.className = 'clone-module-wrap';
+
+          const modLabel = document.createElement('label');
+          modLabel.className = 'clone-row clone-mod-row';
+          modLabel.innerHTML = `
+            <input type="checkbox" class="clone-cb" ${modSel.checked ? 'checked' : ''}>
+            <i data-lucide="${escapeHtml(mod.icon || 'layout')}" class="icon icon-sm" aria-hidden="true"></i>
+            <span class="clone-item-name">${escapeHtml(mod.name)}</span>
+            ${subs.length > 0
+              ? `<span class="clone-count">${selSubCnt}/${subs.length} submodule${subs.length !== 1 ? 's' : ''}</span>`
+              : ''}
+          `;
+          modWrap.appendChild(modLabel);
+
+          // Submodule list (hidden when module unchecked)
+          if (subs.length > 0) {
+            const subList = document.createElement('div');
+            subList.className = 'clone-sub-list';
+            if (!modSel.checked) subList.hidden = true;
+
+            subs.forEach(sub => {
+              const subLabel = document.createElement('label');
+              subLabel.className = 'clone-row clone-sub-row';
+              subLabel.innerHTML = `
+                <input type="checkbox" class="clone-cb" ${modSel.subs[sub.id] ? 'checked' : ''}>
+                <i data-lucide="${escapeHtml(sub.icon || 'box')}" class="icon icon-sm" aria-hidden="true"></i>
+                <span class="clone-item-name">${escapeHtml(sub.name)}</span>
+              `;
+              subLabel.querySelector('input').addEventListener('change', (e) => {
+                modSel.subs[sub.id] = e.target.checked;
+                // Update count in mod label in-place without full rebuild
+                const countEl = modLabel.querySelector('.clone-count');
+                const newCnt  = subs.filter(s => modSel.subs[s.id]).length;
+                if (countEl) countEl.textContent = `${newCnt}/${subs.length} submodule${subs.length !== 1 ? 's' : ''}`;
+              });
+              subList.appendChild(subLabel);
+            });
+
+            modWrap.appendChild(subList);
+
+            // Toggle sub list + sync all subs on module check/uncheck
+            modLabel.querySelector('input').addEventListener('change', (e) => {
+              modSel.checked = e.target.checked;
+              subList.hidden = !e.target.checked;
+              subs.forEach(s => { modSel.subs[s.id] = e.target.checked; });
+              buildTree();
+            });
+          } else {
+            modLabel.querySelector('input').addEventListener('change', (e) => {
+              modSel.checked = e.target.checked;
+            });
+          }
+
+          tree.appendChild(modWrap);
+        });
+
+        refreshIcons(tree);
+      }
+
+      buildTree();
+
+      overlay.querySelector('#clone-sel-all')?.addEventListener('click', () => {
+        sel.variables = varCount > 0;
+        Object.values(sel.modules).forEach(m => {
+          m.checked = true;
+          Object.keys(m.subs).forEach(k => { m.subs[k] = true; });
+        });
+        buildTree();
+      });
+
+      overlay.querySelector('#clone-desel-all')?.addEventListener('click', () => {
+        sel.variables = false;
+        Object.values(sel.modules).forEach(m => {
+          m.checked = false;
+          Object.keys(m.subs).forEach(k => { m.subs[k] = false; });
+        });
+        buildTree();
+      });
+    },
+  });
+
+  if (!ok) return;
+
+  const newName = document.querySelector('#dlg-clone-name')?.value.trim();
+  if (!newName) { _showToast('Name is required', 'error'); return; }
+
+  // ── Build cloned modules array ──────────────────────────────────────────
+  const clonedModules = (customer.modules || [])
+    .filter(mod => sel.modules[mod.id]?.checked)
+    .map(mod => {
+      const modSel      = sel.modules[mod.id];
+      const usedSubIds  = [];
+      const filteredSubs = (mod.submodules || [])
+        .filter(s => modSel.subs[s.id])
+        .map(s => {
+          const newSubId = ensureUniqueSlug(s.id, usedSubIds);
+          usedSubIds.push(newSubId);
+          return { ...s, id: newSubId };
+        });
+      return { ...mod, submodules: filteredSubs };
+    });
+
+  const existingIds = state.config.customers.map(c => c.id);
+  const newId       = ensureUniqueSlug(toSlug(newName), existingIds);
+
+  const result = addCustomer({
+    id:        newId,
+    name:      newName,
+    logoUrl:   customer.logoUrl || '',
+    variables: sel.variables ? { ...(customer.variables || {}) } : {},
+    modules:   clonedModules,
+  });
+
+  if (result.valid) {
+    adminSt.selectedCustomerId = newId;
+    adminSt.activeTab = 'profile';
+    _showToast(`"${newName}" cloned`, 'success');
+    rerenderAdmin();
+  } else {
+    _showToast('Clone failed: ' + result.errors[0]?.message, 'error');
   }
 }
 

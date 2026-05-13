@@ -693,13 +693,95 @@ img { display: block; max-width: 100%; }
   white-space: nowrap;
 }
 
+.rail-clone,
 .rail-delete {
   opacity: 0;
   flex-shrink: 0;
   color: var(--text-muted);
 }
+.rail-item:hover .rail-clone,
 .rail-item:hover .rail-delete { opacity: 1; }
+.rail-clone:hover { color: var(--primary) !important; background: color-mix(in srgb, var(--primary) 10%, transparent); }
 .rail-delete:hover { color: var(--danger) !important; background: var(--danger-subtle); }
+
+/* ── Clone dialog ─────────────────────────────────────────────────────── */
+
+.btn-xs {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  height: auto;
+  line-height: 1.6;
+}
+
+.clone-select-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.clone-select-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-right: 4px;
+}
+
+.clone-tree {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.clone-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
+}
+.clone-row:last-child { border-bottom: none; }
+.clone-row:hover { background: var(--surface-raised); }
+
+.clone-var-row { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+
+.clone-mod-row {
+  font-weight: 500;
+  color: var(--text-primary);
+  background: var(--surface);
+}
+
+.clone-sub-list .clone-sub-row {
+  padding-left: 36px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+}
+.clone-sub-list .clone-sub-row:hover { background: var(--border); }
+
+.clone-item-name { flex: 1; font-size: 13px; }
+
+.clone-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.clone-cb {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
 
 /* Drag state */
 .rail-item.dragging { opacity: 0.45; }
