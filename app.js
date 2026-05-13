@@ -151,11 +151,8 @@ function renderHeader(route) {
           </a>
         ` : ''}
         <a href="#/" class="header-brand" aria-label="${escapeHtml(state.config.brand?.title || 'Autodesk Platform Hub')} home">
-          <img
-            src="${escapeHtml(state.config.brand?.logoUrl || 'assets/autodesk-logo.svg')}"
-            alt="Autodesk"
-            class="header-logo"
-          >
+          <img src="assets/autodesk-logo-light.png" alt="Autodesk" class="header-logo logo-light">
+          <img src="assets/autodesk-logo-dark.png"  alt="Autodesk" class="header-logo logo-dark">
           <span class="header-title">${escapeHtml(state.config.brand?.title || 'Autodesk Platform Hub')}</span>
         </a>
         ${customer ? `

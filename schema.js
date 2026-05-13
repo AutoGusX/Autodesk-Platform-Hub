@@ -152,7 +152,7 @@ export function validate(config) {
 export function emptyConfig() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    brand: { title: 'Autodesk Platform Hub', logoUrl: 'assets/autodesk-logo.svg' },
+    brand: { title: 'Autodesk Platform Hub', logoUrl: 'assets/autodesk-logo-light.png' },
     theme: 'light',
     customers: []
   };

@@ -154,6 +154,17 @@ img { display: block; max-width: 100%; }
   flex-shrink: 0;
 }
 
+/* Show only the appropriate logo for the active theme */
+[data-theme="light"] .logo-dark  { display: none; }
+[data-theme="dark"]  .logo-light { display: none; }
+
+/*
+ * The dark-mode logo is a PNG with a black background.
+ * mix-blend-mode: screen makes black pixels transparent against the dark
+ * navy header so only the white wordmark is visible.
+ */
+.logo-dark { mix-blend-mode: screen; }
+
 .header-title {
   font-weight: 700;
   font-size: 1rem;
