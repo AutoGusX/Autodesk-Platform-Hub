@@ -1029,7 +1029,10 @@ async function openCreateSubmoduleDialog(customerId, moduleId) {
     title: 'Add submodule',
     body: buildSubmoduleFormHtml({ icon: selectedIcon }),
     confirmText: 'Add',
-    onReady: (overlay) => wireSubmoduleFormListeners(overlay, () => selectedIcon, (v) => { selectedIcon = v; }),
+    onReady: (overlay) => {
+      wireSubmoduleFormListeners(overlay, () => selectedIcon, (v) => { selectedIcon = v; });
+      wireUrlAutocomplete(overlay, customerId);
+    },
   });
 
   if (!ok) return;
@@ -1072,6 +1075,7 @@ async function openEditSubmoduleDialog(customerId, moduleId, sub) {
       wireSubmoduleFormListeners(overlay, () => selectedIcon, (v) => { selectedIcon = v; });
       wireSubVarEditor(overlay, localSubVars, customer);
       wireTestUrl(overlay, localSubVars, customer);
+      wireUrlAutocomplete(overlay, customerId);
     },
   });
 
@@ -1247,6 +1251,165 @@ function wireSubVarEditor(overlay, localSubVars, customer) {
     const inputs = editor.querySelectorAll('.var-key');
     inputs[inputs.length - 1]?.focus();
   });
+}
+
+function wireUrlAutocomplete(overlay, customerId) {
+  const urlInput = overlay.querySelector('#dlg-sub-url');
+  if (!urlInput) return;
+
+  const formGroup = urlInput.closest('.form-group');
+  if (!formGroup) return;
+  formGroup.style.position = 'relative';
+
+  let dropdown = null;
+
+  // ── Token detection ──────────────────────────────────────────────────────
+  // Returns { start, end, partial } when cursor is inside an open {token,
+  // where end extends to the closing } if one exists after the cursor.
+  function getActiveToken() {
+    const val = urlInput.value;
+    const pos = urlInput.selectionStart;
+    let tokenStart = -1;
+    for (let i = pos - 1; i >= 0; i--) {
+      if (val[i] === '}') return null;
+      if (val[i] === '{') { tokenStart = i; break; }
+    }
+    if (tokenStart === -1) return null;
+
+    // Extend end to the matching } so selecting a suggestion replaces the whole token
+    let tokenEnd = pos;
+    for (let i = pos; i < val.length; i++) {
+      if (val[i] === '{') break;
+      if (val[i] === '}') { tokenEnd = i + 1; break; }
+    }
+    return { start: tokenStart, end: tokenEnd, partial: val.slice(tokenStart + 1, pos) };
+  }
+
+  // ── Dropdown lifecycle ───────────────────────────────────────────────────
+  function hideDropdown() {
+    dropdown?.remove();
+    dropdown = null;
+  }
+
+  function showDropdown(token) {
+    const customer  = state.config.customers.find(c => c.id === customerId);
+    const custVars  = customer?.variables || {};
+    const allKeys   = Object.keys(custVars);
+    const partial   = token.partial;
+    const lowerP    = partial.toLowerCase();
+
+    const matches     = allKeys.filter(k => k.toLowerCase().startsWith(lowerP));
+    const exactMatch  = allKeys.some(k => k === partial);
+    const isValidName = partial.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(partial);
+
+    // Nothing to show when no matches and no valid name to create
+    if (matches.length === 0 && !isValidName) { hideDropdown(); return; }
+    if (matches.length === 0 && partial === '') { hideDropdown(); return; }
+
+    if (dropdown) { dropdown.remove(); dropdown = null; }
+    dropdown = document.createElement('div');
+    dropdown.className = 'url-var-dropdown';
+    dropdown.style.top = `${urlInput.offsetTop + urlInput.offsetHeight + 2}px`;
+
+    // ── Existing-variable rows ─────────────────────────────────────────────
+    matches.forEach(key => {
+      const val  = custVars[key];
+      const item = document.createElement('button');
+      item.type  = 'button';
+      item.className = 'url-var-item';
+      item.innerHTML = `
+        <i data-lucide="hash" class="icon icon-xs" aria-hidden="true"></i>
+        <span class="url-var-name">${escapeHtml(key)}</span>
+        ${val ? `<span class="url-var-val">${escapeHtml(val)}</span>` : ''}
+      `;
+      item.addEventListener('mousedown', (e) => { e.preventDefault(); insertToken(key, token); hideDropdown(); });
+      dropdown.appendChild(item);
+    });
+
+    // ── Create-new-variable row ────────────────────────────────────────────
+    if (isValidName && !exactMatch) {
+      const createItem = document.createElement('button');
+      createItem.type  = 'button';
+      createItem.className = 'url-var-item url-var-create';
+      createItem.innerHTML = `
+        <i data-lucide="plus-circle" class="icon icon-xs" aria-hidden="true"></i>
+        <span>Create variable <code class="url-var-code">${escapeHtml(partial)}</code></span>
+      `;
+      createItem.addEventListener('mousedown', (e) => { e.preventDefault(); createAndInsertVar(partial, token); });
+      dropdown.appendChild(createItem);
+    }
+
+    if (dropdown.children.length === 0) { hideDropdown(); return; }
+
+    formGroup.appendChild(dropdown);
+    refreshIcons(dropdown);
+
+    // Arrow-key navigation inside dropdown
+    dropdown.addEventListener('keydown', (e) => {
+      const items = [...dropdown.querySelectorAll('.url-var-item')];
+      const idx   = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[Math.min(idx + 1, items.length - 1)]?.focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (idx <= 0) urlInput.focus();
+        else items[idx - 1]?.focus();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (document.activeElement !== urlInput) document.activeElement.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        hideDropdown();
+        urlInput.focus();
+      }
+    });
+  }
+
+  // ── Token insertion ──────────────────────────────────────────────────────
+  function insertToken(varKey, token) {
+    const val      = urlInput.value;
+    const inserted = `{${varKey}}`;
+    urlInput.value = val.slice(0, token.start) + inserted + val.slice(token.end);
+    const newPos   = token.start + inserted.length;
+    urlInput.setSelectionRange(newPos, newPos);
+    urlInput.dispatchEvent(new Event('input'));
+  }
+
+  // ── Create variable + insert ─────────────────────────────────────────────
+  function createAndInsertVar(varName, token) {
+    const customer = state.config.customers.find(c => c.id === customerId);
+    const updated  = { ...(customer?.variables || {}), [varName]: '' };
+    const result   = updateCustomer(customerId, { variables: updated });
+    if (result.valid) {
+      insertToken(varName, token);
+      hideDropdown();
+      _showToast(`Variable "{${varName}}" added to customer variables`, 'success');
+    } else {
+      _showToast('Could not add variable', 'error');
+      hideDropdown();
+    }
+  }
+
+  // ── Event wiring ─────────────────────────────────────────────────────────
+  urlInput.addEventListener('input', () => {
+    const token = getActiveToken();
+    if (token) showDropdown(token); else hideDropdown();
+  });
+
+  // ArrowDown from URL input → focus first dropdown item
+  urlInput.addEventListener('keydown', (e) => {
+    if (!dropdown) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      dropdown.querySelector('.url-var-item')?.focus();
+    } else if (e.key === 'Escape') {
+      hideDropdown();
+    }
+  });
+
+  // Delay hide so mousedown on dropdown items fires before blur closes it
+  urlInput.addEventListener('blur', () => setTimeout(hideDropdown, 160));
 }
 
 function wireTestUrl(overlay, localSubVars, customer) {
